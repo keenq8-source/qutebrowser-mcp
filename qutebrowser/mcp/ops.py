@@ -228,6 +228,22 @@ class QtOps:
         info['origin'] = origin
         return info
 
+    def page_state(self, tab_id: str | None = None) -> dict:
+        """Report load/ready state of a tab (for agents and debugging)."""
+        win_id, tb, idx, tab = self._resolve_tab(tab_id)
+        origin = self._require_tab_origin(tab)
+        ready = self._wait_js(
+            tab, "JSON.stringify(document.readyState)", timeout_ms=2000)
+        url = tab.url()
+        return {
+            'tab_id': f'{win_id}:{idx}',
+            'url': url.toString() if url is not None else '',
+            'title': tab.title(),
+            'load_status': tab.load_status().name,
+            'ready_state': ready,
+            'origin': origin,
+        }
+
     # ------------------------------------------------------------------
     # Page interaction
     # ------------------------------------------------------------------
@@ -427,9 +443,16 @@ class QtOps:
 
         if condition == 'load':
             def check() -> bool:
-                return tab.load_status in (
-                    usertypes.LoadStatus.success,
-                    usertypes.LoadStatus.success_https)
+                if tab.load_status() in (usertypes.LoadStatus.success,
+                                         usertypes.LoadStatus.success_https):
+                    return True
+                # Some pages never reach qutebrowser's "success" load status
+                # (stuck subresources); document.readyState is the page's
+                # own truth.
+                state = self._wait_js(
+                    tab, "JSON.stringify(document.readyState)",
+                    timeout_ms=2000)
+                return state == 'complete'
         elif condition.startswith('selector:'):
             css = json.dumps(condition[len('selector:'):])
             def check() -> bool:

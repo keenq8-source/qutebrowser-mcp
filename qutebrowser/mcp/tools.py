@@ -106,6 +106,16 @@ def navigate(url: str, tab_id: Optional[str] = None) -> dict:
     return _run('navigate', lambda: _ops().navigate(url, tab_id),
                 summary=f'navigate to {url}')
 
+@tool
+def page_state(tab_id: Optional[str] = None) -> dict:
+    """Report a tab's load state: URL, title, load_status, readyState.
+
+    Use it to check the result of navigate()/tab_open() (e.g. wait until
+    ready_state is "complete").
+    """
+    return _run('page_state', lambda: _ops().page_state(tab_id),
+                summary=f'page state {tab_id or "active"}')
+
 
 @tool
 def read_page(tab_id: Optional[str] = None, max_chars: int = 8000) -> dict:

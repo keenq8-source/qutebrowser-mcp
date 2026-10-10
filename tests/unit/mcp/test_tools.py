@@ -83,8 +83,8 @@ def test_tool_registry_names():
     names = sorted(fn.__name__ for fn in tools.TOOLS)
     assert names == sorted([
         'tabs_list', 'tab_open', 'tab_close', 'tab_focus', 'navigate',
-        'read_page', 'find_elements', 'click', 'fill', 'press_keys',
-        'screenshot', 'wait_for',
+        'page_state', 'read_page', 'find_elements', 'click', 'fill',
+        'press_keys', 'screenshot', 'wait_for',
     ])
 
 
