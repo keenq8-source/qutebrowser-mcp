@@ -16,6 +16,7 @@ The module exposes a singleton :class:`QtOps` instance
 import json
 import logging
 import os
+import pathlib
 import time
 
 from qutebrowser.qt.core import QEventLoop, QTimer, QUrl, Qt
@@ -438,6 +439,140 @@ class QtOps:
         if not pixmap.save(path, 'PNG'):
             raise OpsError('Failed to save screenshot')
         return {'path': path, 'origin': origin, 'tab_id': f'{win_id}:{idx}'}
+
+    def scroll(self, direction: str, amount: float = 1.0,
+               tab_id: str | None = None) -> dict:
+        """Scroll the page by viewports (direction: up/down/left/right)."""
+        win_id, tb, idx, tab = self._resolve_tab(tab_id)
+        origin = self._require_tab_origin(tab)
+        if direction not in ('up', 'down', 'left', 'right'):
+            raise OpsError('scroll: direction must be up/down/left/right')
+        factor = float(amount)
+        if direction == 'up':
+            xs, ys = '0', f'-Math.round(innerHeight * {factor})'
+        elif direction == 'down':
+            xs, ys = '0', f'Math.round(innerHeight * {factor})'
+        elif direction == 'left':
+            xs, ys = f'-Math.round(innerWidth * {factor})', '0'
+        else:
+            xs, ys = f'Math.round(innerWidth * {factor})', '0'
+        js = ("(() => {"
+              f"  window.scrollBy({{left: {xs}, top: {ys}}});"
+              "  return JSON.stringify({scrollY: Math.round(window.scrollY),"
+              "    scrollHeight: document.documentElement.scrollHeight});"
+              "})()")
+        result = self._wait_js(tab, js)
+        result['origin'] = origin
+        return result
+
+    def select_option(self, ref: str | int, value: str,
+                      tab_id: str | None = None) -> dict:
+        """Choose an option in a <select> dropdown by value or label."""
+        win_id, tb, idx, tab = self._resolve_tab(tab_id)
+        origin = self._require_tab_origin(tab)
+        value_js = json.dumps(value)
+        action = (
+            f"  const wanted = {value_js};"
+            "  if (el.tagName !== 'SELECT') {"
+            "    return JSON.stringify({ok: false,"
+            "      reason: 'element is not a <select>' }); }"
+            "  const needle = wanted.trim().toLowerCase();"
+            "  const opt = Array.from(el.options).find(o =>"
+            "    o.value.trim().toLowerCase() === needle ||"
+            "    o.text.trim().toLowerCase() === needle ||"
+            "    o.text.trim().toLowerCase().includes(needle));"
+            "  if (!opt) { return JSON.stringify({ok: false,"
+            "    reason: 'no option matches ' + wanted,"
+            "    options: Array.from(el.options).map(o => o.text.trim())"
+            "      .slice(0, 40) }); }"
+            "  el.value = opt.value;"
+            "  el.dispatchEvent(new Event('input', {bubbles: true}));"
+            "  el.dispatchEvent(new Event('change', {bubbles: true}));"
+            "  return JSON.stringify({ok: true, chosen: opt.text.trim()});"
+        )
+        result = self._wait_js(tab, self._element_js(ref, action_js=action))
+        if not result.get('ok'):
+            raise OpsError(
+                f"select_option failed: {result.get('reason', 'unknown')}")
+        result['origin'] = origin
+        return result
+
+    def save_pdf(self, tab_id: str | None = None) -> dict:
+        """Save the page as a PDF via the tab's printing API."""
+        win_id, tb, idx, tab = self._resolve_tab(tab_id)
+        origin = self._require_tab_origin(tab)
+        tab.printing.check_pdf_support()
+        out_dir = standarddir.cache() + '/mcp'
+        os.makedirs(out_dir, exist_ok=True)
+        path = pathlib.Path(out_dir) / f'page-{int(time.time() * 1000)}.pdf'
+        loop = QEventLoop()
+        state: dict = {}
+
+        def on_finished(file_path, ok) -> None:
+            if os.path.abspath(file_path) == os.path.abspath(str(path)):
+                state['ok'] = bool(ok)
+                loop.quit()
+
+        tab.printing.pdf_printing_finished.connect(on_finished)
+        try:
+            timer = QTimer()
+            timer.setSingleShot(True)
+            timer.timeout.connect(loop.quit)
+            timer.start(30_000)
+            tab.printing.to_pdf(path)
+            loop.exec()
+            timer.stop()
+        finally:
+            tab.printing.pdf_printing_finished.disconnect(on_finished)
+        if not state.get('ok'):
+            raise OpsError('PDF export failed or timed out')
+        return {'path': str(path), 'origin': origin,
+                'tab_id': f'{win_id}:{idx}'}
+
+    def history_search(self, query: str, limit: int = 20) -> dict:
+        """Search the browsing history (substring on url/title)."""
+        from qutebrowser.browser import history as history_module
+        history_db = getattr(history_module, 'web_history', None)
+        if history_db is None:
+            raise OpsError('History is not available')
+        limit = max(1, min(int(limit), 200))
+        pattern = f'%{query}%'
+        query_obj = history_db.database.query(
+            'SELECT url, title, atime FROM History '
+            'WHERE NOT redirect AND (url LIKE :pat OR title LIKE :pat) '
+            'ORDER BY atime DESC LIMIT :limit')
+        rows = list(query_obj.run(pat=pattern, limit=limit))
+        return {'query': query,
+                'results': [{'url': row[0], 'title': row[1],
+                             'atime': row[2]} for row in rows]}
+
+    def bookmarks_list(self, query: str | None = None) -> dict:
+        """List bookmarks and quickmarks (optionally filtered)."""
+        needle = (query or '').lower()
+
+        def _filter(items):
+            if not needle:
+                return items
+            return [i for i in items
+                    if needle in i['name'].lower()
+                    or needle in i['url'].lower()]
+
+        bookmarks = []
+        try:
+            manager = objreg.get('bookmark-manager')
+            for url, title in getattr(manager, 'marks', {}).items():
+                bookmarks.append({'name': title or url, 'url': url})
+        except KeyError:
+            pass
+        quickmarks = []
+        try:
+            manager = objreg.get('quickmark-manager')
+            for name, url in getattr(manager, 'marks', {}).items():
+                quickmarks.append({'name': name, 'url': url})
+        except KeyError:
+            pass
+        return {'bookmarks': _filter(bookmarks),
+                'quickmarks': _filter(quickmarks)}
 
     def wait_for(self, condition: str, timeout_ms: int = 10_000,
                  tab_id: str | None = None) -> dict:

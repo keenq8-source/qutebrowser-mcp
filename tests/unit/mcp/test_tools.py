@@ -65,6 +65,26 @@ class FakeOps:
         self.calls.append(('wait_for', condition, timeout_ms, tab_id))
         return {'satisfied': True}
 
+    def scroll(self, direction, amount=1.0, tab_id=None):
+        self.calls.append(('scroll', direction, amount, tab_id))
+        return {'scrollY': 0, 'scrollHeight': 100}
+
+    def select_option(self, ref, value, tab_id=None):
+        self.calls.append(('select_option', ref, value, tab_id))
+        return {'ok': True, 'chosen': value}
+
+    def save_pdf(self, tab_id=None):
+        self.calls.append(('save_pdf', tab_id))
+        return {'path': 'C:/tmp/page.pdf'}
+
+    def history_search(self, query, limit=20):
+        self.calls.append(('history_search', query, limit))
+        return {'query': query, 'results': []}
+
+    def bookmarks_list(self, query=None):
+        self.calls.append(('bookmarks_list', query))
+        return {'bookmarks': [], 'quickmarks': []}
+
 
 @pytest.fixture
 def fake(monkeypatch):
@@ -84,7 +104,8 @@ def test_tool_registry_names():
     assert names == sorted([
         'tabs_list', 'tab_open', 'tab_close', 'tab_focus', 'navigate',
         'page_state', 'read_page', 'find_elements', 'click', 'fill',
-        'press_keys', 'screenshot', 'wait_for',
+        'press_keys', 'screenshot', 'wait_for', 'scroll', 'select_option',
+        'save_pdf', 'history_search', 'bookmarks_list',
     ])
 
 
@@ -119,6 +140,37 @@ def test_high_risk_tools_flagged(fake):
     flags = {e['tool']: e['high_risk'] for e in events}
     assert flags['press_keys'] is True
     assert flags['screenshot'] is True
+
+def test_scroll_dispatches(fake):
+    ops, events = fake
+    tools.scroll('down', 2.0, tab_id='0:0')
+    assert ops.calls == [('scroll', 'down', 2.0, '0:0')]
+    assert events[0]['tool'] == 'scroll'
+
+
+def test_select_option_dispatches(fake):
+    ops, events = fake
+    res = tools.select_option('7', 'UK 10', tab_id='0:0')
+    assert ops.calls == [('select_option', '7', 'UK 10', '0:0')]
+    assert res == {'ok': True, 'chosen': 'UK 10'}
+    assert events[0]['tool'] == 'select_option'
+
+
+def test_save_pdf_flag_and_dispatch(fake):
+    ops, events = fake
+    tools.save_pdf()
+    assert ops.calls == [('save_pdf', None)]
+    assert events[0]['high_risk'] is True
+
+
+def test_history_and_bookmarks_dispatch(fake):
+    ops, events = fake
+    tools.history_search('asos', limit=5)
+    tools.bookmarks_list('coat')
+    assert ops.calls == [('history_search', 'asos', 5),
+                         ('bookmarks_list', 'coat')]
+    assert [e['tool'] for e in events] == ['history_search',
+                                           'bookmarks_list']
 
 
 def test_errors_are_audited(monkeypatch, fake):

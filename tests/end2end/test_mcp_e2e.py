@@ -42,6 +42,12 @@ INDEX_HTML = """<!DOCTYPE html>
 <html><head><title>MCP E2E</title></head>
 <body><h1 id="headline">hello from the fixture</h1>
 <p><a id="nav-link" href="/two.html">go to page two</a></p>
+<select id="size">
+<option>Choose</option><option>UK 8</option><option>UK 10</option>
+<option>UK 12</option>
+</select>
+<div style="height: 3000px">spacer</div>
+<p id="bottom">bottom marker</p>
 </body></html>
 """
 
@@ -167,7 +173,8 @@ async def _drive(browser) -> None:
                 tools = await session.list_tools()
                 names = sorted(t.name for t in tools.tools)
                 assert 'read_page' in names
-                assert len(names) >= 12
+                assert 'scroll' in names and 'select_option' in names
+                assert len(names) >= 17
 
                 tabs = _items(await session.call_tool('tabs_list', {}))
                 assert any('about:blank' in t['url'] or t['url'] == ''
@@ -193,6 +200,24 @@ async def _drive(browser) -> None:
                 assert 'hello from the fixture' in page['text']
                 assert page['note'].startswith('[UNTRUSTED PAGE CONTENT')
 
+                scrolled = json.loads(_text(await session.call_tool(
+                    'scroll', {'direction': 'down', 'amount': 1.0})))
+                assert scrolled['scrollY'] > 0, scrolled
+
+                chosen = json.loads(_text(await session.call_tool(
+                    'select_option', {'ref': '#size', 'value': 'UK 10'})))
+                assert chosen.get('ok') and chosen['chosen'] == 'UK 10', \
+                    chosen
+
+                marks = json.loads(_text(await session.call_tool(
+                    'bookmarks_list', {})))
+                assert isinstance(marks['bookmarks'], list)
+                assert isinstance(marks['quickmarks'], list)
+
+                hist = json.loads(_text(await session.call_tool(
+                    'history_search', {'query': 'fixture'})))
+                assert isinstance(hist['results'], list)
+
                 found = json.loads(_text(await session.call_tool(
                     'find_elements', {'query': 'page two'})))
                 link = [e for e in found['elements']
@@ -212,6 +237,11 @@ async def _drive(browser) -> None:
                 shot = json.loads(_text(await session.call_tool(
                     'screenshot', {})))
                 assert pathlib.Path(shot['path']).exists()
+
+                pdf = json.loads(_text(await session.call_tool(
+                    'save_pdf', {})))
+                pdf_path = pathlib.Path(pdf['path'])
+                assert pdf_path.exists() and pdf_path.stat().st_size > 500
 
 
 def test_mcp_end_to_end(browser):

@@ -112,3 +112,32 @@ def mcp_revoke() -> None:
     """Revoke all session permissions granted to the MCP agent."""
     security.revoke_session()
     message.info('MCP: revoked all session permissions')
+
+@cmdutils.register(name='mcp-log')
+def mcp_log(count: int = 10) -> None:
+    """Show the most recent MCP audit entries (default: last 10)."""
+    import json as _json
+
+    from qutebrowser.mcp import audit as mcp_audit
+
+    path = mcp_audit._log_path()
+    if not path.exists():
+        message.info(f'MCP: no audit log yet ({path})')
+        return
+    lines = path.read_text(encoding='utf-8', errors='replace').splitlines()
+    count = max(1, min(count, 50))
+    parts = []
+    for line in lines[-count:]:
+        try:
+            entry = _json.loads(line)
+        except ValueError:
+            continue
+        ts = str(entry.get('ts', ''))[11:19]
+        tool = str(entry.get('tool', '?'))
+        decision = str(entry.get('decision') or '')
+        flag = '!' if entry.get('high_risk') else ''
+        parts.append(f'{ts} {tool}{flag} {decision}'.strip())
+    if not parts:
+        message.info(f'MCP: audit log empty ({path})')
+        return
+    message.info(' | '.join(parts) + f' - log: {path}')

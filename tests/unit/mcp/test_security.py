@@ -47,6 +47,7 @@ def test_matches_config_invalid_pattern_ignored(monkeypatch):
 
 def test_request_access_grants_and_caches(monkeypatch):
     monkeypatch.setattr(security, '_config_patterns', lambda: [])
+    monkeypatch.setattr(security, '_ask_remember', lambda origin: False)
     asked = []
 
     def fake_ask(origin):
@@ -76,3 +77,35 @@ def test_request_access_skips_prompt_when_config_matches(monkeypatch):
 
     monkeypatch.setattr(security, '_ask_user', no_prompt)
     assert security.request_access('https://example.com')
+
+def test_request_access_remember_persists(monkeypatch):
+    monkeypatch.setattr(security, '_config_patterns', lambda: [])
+    monkeypatch.setattr(security, '_ask_user', lambda origin: True)
+    monkeypatch.setattr(security, '_ask_remember', lambda origin: True)
+    saved = []
+
+    class FakeInstance:
+
+        def set_obj(self, name, value, save_yaml=False):
+            saved.append((name, value, save_yaml))
+
+    class FakeConfig:
+        instance = FakeInstance()
+
+    monkeypatch.setattr(security, 'config', FakeConfig)
+    assert security.request_access('https://persist.example')
+    assert saved == [('mcp.allow_origins', ['https://persist.example'],
+                      True)]
+
+
+def test_request_access_session_only(monkeypatch):
+    monkeypatch.setattr(security, '_config_patterns', lambda: [])
+    monkeypatch.setattr(security, '_ask_user', lambda origin: True)
+    monkeypatch.setattr(security, '_ask_remember', lambda origin: False)
+
+    def no_persist(origin):
+        raise AssertionError('should not persist')
+
+    monkeypatch.setattr(security, '_persist_origin', no_persist)
+    assert security.request_access('https://session.example')
+    assert security.session_allowed() == ['https://session.example']

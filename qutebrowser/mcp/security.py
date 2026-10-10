@@ -99,23 +99,53 @@ def _ask_user(origin: str) -> bool | None:
     )
     return answer
 
+def _ask_remember(origin: str) -> bool:
+    """Ask whether to persist the grant (blocking; Qt thread only).
+
+    Split out so tests can monkeypatch it.
+    """
+    text = (f'Also remember <b>{html.escape(origin)}</b> permanently? '
+            'It will be added to the mcp.allow_origins setting.')
+    return bool(message.ask(
+        title='Remember this site?',
+        text=text,
+        mode=usertypes.PromptMode.yesno,
+        default=False,
+    ))
+
+
+def _persist_origin(origin: str) -> None:
+    """Add the origin to mcp.allow_origins (saved to the config)."""
+    patterns = list(_config_patterns())
+    if origin not in patterns:
+        patterns.append(origin)
+        config.instance.set_obj('mcp.allow_origins', patterns,
+                                save_yaml=True)
+        logger.info(f'MCP: added {origin} to mcp.allow_origins')
+
 
 def request_access(origin: str) -> bool:
     """Ensure access to ``origin``; prompt the user if needed.
 
     Returns True when allowed. Records the decision in the audit log.
+    On a grant, offers to persist the origin into ``mcp.allow_origins``.
     """
     if is_allowed(origin):
         return True
-    answer = _ask_user(origin)
-    if answer:
-        _session_allowed.add(origin)
+    if not _ask_user(origin):
+        audit.log_event('consent', origin=origin, decision='deny')
+        logger.info(f'MCP access to {origin} denied')
+        return False
+    _session_allowed.add(origin)
+    if _ask_remember(origin):
+        _persist_origin(origin)
+        audit.log_event('consent', origin=origin,
+                        decision='allow-persistent')
+        logger.info(f'MCP access to {origin} allowed permanently')
+    else:
         audit.log_event('consent', origin=origin, decision='allow-session')
         logger.info(f'MCP access to {origin} allowed for this session')
-        return True
-    audit.log_event('consent', origin=origin, decision='deny')
-    logger.info(f'MCP access to {origin} denied')
-    return False
+    return True
 
 
 def session_allowed() -> list[str]:

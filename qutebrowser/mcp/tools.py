@@ -196,6 +196,50 @@ def wait_for(condition: str, timeout_ms: int = 10000,
                                                     tab_id),
                 summary=f'wait for {condition!r}')
 
+@tool
+def scroll(direction: str, amount: float = 1.0,
+           tab_id: Optional[str] = None) -> dict:
+    """Scroll the page by viewports.
+
+    direction: "up", "down", "left" or "right". amount: number of
+    viewport heights/widths to scroll. Returns the new scroll position.
+    """
+    return _run('scroll', lambda: _ops().scroll(direction, amount, tab_id),
+                summary=f'scroll {direction} x{amount}')
+
+
+@tool
+def select_option(ref: str, value: str, tab_id: Optional[str] = None) -> dict:
+    """Choose an option in a <select> dropdown.
+
+    ref: element reference from find_elements. value: the option's value or
+    label (case-insensitive; exact match first, then substring).
+    """
+    return _run('select_option',
+                lambda: _ops().select_option(ref, value, tab_id),
+                summary=f'select {value!r} in {ref}')
+
+
+@tool
+def save_pdf(tab_id: Optional[str] = None) -> dict:
+    """Save the current page as a PDF; returns the file path."""
+    return _run('save_pdf', lambda: _ops().save_pdf(tab_id),
+                summary=f'save pdf {tab_id or "active"}', high_risk=True)
+
+
+@tool
+def history_search(query: str, limit: int = 20) -> dict:
+    """Search the browsing history by url/title substring."""
+    return _run('history_search', lambda: _ops().history_search(query, limit),
+                summary=f'history search {query!r}')
+
+
+@tool
+def bookmarks_list(query: Optional[str] = None) -> dict:
+    """List bookmarks and quickmarks, optionally filtered."""
+    return _run('bookmarks_list', lambda: _ops().bookmarks_list(query),
+                summary=f'bookmarks {query or "all"}')
+
 
 def register(server) -> None:
     """Register all tools on an MCPServer instance."""
