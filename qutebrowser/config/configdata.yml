@@ -2047,6 +2047,33 @@ keyhint.delay:
   desc: Time (in milliseconds) from pressing a key to seeing the keyhint
     dialog.
 
+## mcp
+
+mcp.enabled:
+  type: Bool
+  default: false
+  desc: Enable the native MCP (Model Context Protocol) server, which allows
+    AI agents to control the browser. The server listens on 127.0.0.1 only
+    and requires a bearer token (see the :mcp-token command).
+
+mcp.port:
+  type:
+    name: Int
+    minval: 1024
+    maxval: 65535
+  default: 8765
+  desc: TCP port for the MCP server (bound to 127.0.0.1).
+
+mcp.allow_origins:
+  type:
+    name: List
+    valtype: String
+    none_ok: true
+  default: []
+  desc: |
+    URL patterns (urlmatch) for sites the MCP agent may access without
+    asking for permission. Example: https://example.com
+
 ## messages
 
 messages.timeout:
