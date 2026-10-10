@@ -94,5 +94,8 @@ SDK note: MCP SDK v2 (`mcp>=2.3`) — `from mcp.client.streamable_http import st
 
 ---
 
-## Upstream qutebrowser README
+## Upstream
+
+This repository is a fork of [qutebrowser](https://github.com/qutebrowser/qutebrowser) (GPL-3.0).
+The upstream project README lives in `README.asciidoc`; docs and community are at qutebrowser.org.
 
