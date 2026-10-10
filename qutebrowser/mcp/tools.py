@@ -189,8 +189,8 @@ def wait_for(condition: str, timeout_ms: int = 10000,
     """Wait until a condition holds in a tab.
 
     condition: "load" (page finished loading), "selector:<css>" (element
-    exists) or "text:<s>" (page text contains s). Returns whether the
-    condition was satisfied before the timeout.
+    exists) or "text:<s>" (page text contains s, case-insensitive).
+    Returns whether the condition was satisfied before the timeout.
     """
     return _run('wait_for', lambda: _ops().wait_for(condition, timeout_ms,
                                                     tab_id),

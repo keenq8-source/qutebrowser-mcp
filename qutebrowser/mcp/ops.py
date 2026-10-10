@@ -257,9 +257,15 @@ class QtOps:
         code = (
             "(() => {"
             "  const body = document.body ? document.body.innerText : '';"
-            "  const text = body.replace(/[ \\t]+\\n/g, '\\n')"
-            "                   .replace(/\\n{3,}/g, '\\n\\n').trim()"
-            f"                   .slice(0, {max_chars});"
+            "  let text = body.replace(/[ \\t]+\\n/g, '\\n')"
+            "                 .replace(/\\n{3,}/g, '\\n\\n').trim();"
+            "  const selects = Array.from(document.querySelectorAll('select'))"
+            "    .map(s => Array.from(s.options).map(o => o.text.trim())"
+            "             .filter(Boolean).join(' | '))"
+            "    .filter(Boolean);"
+            "  if (selects.length) { text += '\\n\\n[select options]\\n'"
+            "      + selects.join('\\n'); }"
+            f"  text = text.slice(0, {max_chars});"
             "  return JSON.stringify({"
             "    title: document.title, url: location.href, text: text});"
             "})()"
@@ -462,12 +468,12 @@ class QtOps:
                     timeout_ms=2000)
                 return bool(res)
         elif condition.startswith('text:'):
-            needle = json.dumps(condition[len('text:'):])
+            needle = json.dumps(condition[len('text:'):].lower())
             def check() -> bool:
                 res = self._wait_js(
                     tab,
                     "JSON.stringify((document.body ? document.body.innerText"
-                    " : '').includes(" + needle + "))",
+                    " : '').toLowerCase().includes(" + needle + "))",
                     timeout_ms=2000)
                 return bool(res)
         else:
